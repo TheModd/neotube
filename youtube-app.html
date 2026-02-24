@@ -98,12 +98,16 @@
                 { code: 'CN', name: 'China', flag: '🇨🇳' },
                 { code: 'IN', name: 'India', flag: '🇮🇳' }
             ];
-            YOUTUBE_API_KEY=YOUTUBE_API_KEY.split('').reverse().join('');
+
+            const finalKey = YOUTUBE_API_KEY.split('').reverse().join('');
+        
             useEffect(() => {
-                if (YOUTUBE_API_KEY && YOUTUBE_API_KEY !== 'API_PLACEHOLDER') {
+                // Update your check to use the corrected key
+                if (finalKey && finalKey !== 'REPLACEHOLDER_ERA_UOY_FI') {
                     setApiKeySet(true);
                 }
-
+            }, [finalKey])
+            
                 const saved = localStorage.getItem('ytSearchHistory');
                 if (saved) {
                     try {
@@ -189,7 +193,7 @@
                 setErrorMessage('');
                 
                 try {
-                    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&regionCode=${filters.region}&maxResults=20&key=${YOUTUBE_API_KEY}`;
+                    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&regionCode=${filters.region}&maxResults=20&key=${finalKey}`;
                     
                     if (filters.order && filters.order !== 'relevance') {
                         url += `&order=${filters.order}`;
@@ -255,13 +259,13 @@
                     }
 
                     // Get video details including statistics
-                    const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
+                    const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${finalKey}`;
                     const detailsResponse = await fetch(detailsUrl);
                     const detailsData = await detailsResponse.json();
 
                     // Get channel details for subscriber counts
                     const channelIds = [...new Set(data.items.map(item => item.snippet.channelId))].join(',');
-                    const channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+                    const channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelIds}&key=${finalKey}`;
                     const channelResponse = await fetch(channelUrl);
                     const channelData = await channelResponse.json();
 
@@ -852,5 +856,6 @@
 </body>
 
 </html>
+
 
 
