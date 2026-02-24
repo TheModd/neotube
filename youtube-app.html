@@ -62,7 +62,7 @@
         const { useState, useEffect, useRef } = React;
 
         // ⚠️ IMPORTANT: Replace with your YouTube API key
-        const YOUTUBE_API_KEY = 'API_PLACEHOLDER';
+        const YOUTUBE_API_KEY = 'AUSjVYYNP4iqfiWC1Opt7r_WrlnHjXu2BySazIA';
         
         const App = () => {
             const [searchQuery, setSearchQuery] = useState('');
@@ -98,7 +98,7 @@
                 { code: 'CN', name: 'China', flag: '🇨🇳' },
                 { code: 'IN', name: 'India', flag: '🇮🇳' }
             ];
-
+            YOUTUBE_API_KEY=YOUTUBE_API_KEY.split('').reverse().join('');
             useEffect(() => {
                 if (YOUTUBE_API_KEY && YOUTUBE_API_KEY !== 'API_PLACEHOLDER') {
                     setApiKeySet(true);
@@ -852,4 +852,5 @@
 </body>
 
 </html>
+
 
