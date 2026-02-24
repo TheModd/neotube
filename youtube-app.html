@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimal YouTube</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIk1pbmltYWwgWW91VHViZSIsCiAgInNob3J0X25hbWUiOiAiTWluWVQiLAogICJzdGFydF91cmwiOiAiLiIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgImJhY2tncm91bmRfY29sb3IiOiAiI2ZmZmZmZiIsCiAgInRoZW1lX2NvbG9yIjogIiMyNTYzZWIiLAogICJpY29ucyI6IFsKICAgIHsKICAgICAgInNyYyI6ICJkYXRhOmltYWdlL3N2Zyt4bWwsJTNDc3ZnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zycgdmlld0JveD0nMCAwIDEwMCAxMDAnJTNFJTNDcmVjdCBmaWxsPSclMjMyNTYzZWInIHdpZHRoPScxMDAnIGhlaWdodD0nMTAwJy8lM0UlM0N0ZXh0IHg9JzUwJyB5PSc1MCcgZm9udC1zaXplPSc1MCcgdGV4dC1hbmNob3I9J21pZGRsZScgZHk9Jy4zZW0nIGZpbGw9J3doaXRlJyUzRVklM0MvdGV4dCUzRSUzQy9zdmclM0UiLAogICAgICAic2l6ZXMiOiAiMTkyeDE5MiIsCiAgICAgICJ0eXBlIjogImltYWdlL3N2Zyt4bWwiCiAgICB9CiAgXQp9">
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+        .api-setup-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            font-weight: 500;
+        }
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .video-preview-container {
+            position: relative;
+            overflow: hidden;
+        }
+        .video-preview-container:hover .hover-preview {
+            opacity: 1;
+        }
+        .hover-preview {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .video-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            padding: 1rem;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .video-player-wrapper:hover .video-overlay {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ⚠️ IMPORTANT: Replace with your YouTube API key
+        const YOUTUBE_API_KEY = 'AIzaSyB2uXjHnlrW_r7tpO1CWifqi4PNYYVjSUA';
+        
+        const App = () => {
+            const [searchQuery, setSearchQuery] = useState('');
+            const [searchHistory, setSearchHistory] = useState([]);
+            const [showResults, setShowResults] = useState(true);
+            const [darkMode, setDarkMode] = useState(false);
+            const [showHistory, setShowHistory] = useState(false);
+            const [showFilters, setShowFilters] = useState(false);
+            const [showSettings, setShowSettings] = useState(false);
+            const [videos, setVideos] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [selectedVideo, setSelectedVideo] = useState(null);
+            const [apiKeySet, setApiKeySet] = useState(false);
+            const [errorMessage, setErrorMessage] = useState('');
+            const [playerSize, setPlayerSize] = useState('full'); // full, half, split
+            const [filters, setFilters] = useState({
+                region: 'US',
+                duration: 'any',
+                order: 'relevance',
+                uploadDate: 'any'
+            });
+            const [settings, setSettings] = useState({
+                hoverPreview: false,
+                showPlayerTitle: true,
+                showPlayerControls: true,
+                autoplay: true
+            });
+
+            const regions = [
+                { code: 'US', name: 'United States', flag: '🇺🇸' },
+                { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
+                { code: 'AU', name: 'Australia', flag: '🇦🇺' },
+                { code: 'CN', name: 'China', flag: '🇨🇳' },
+                { code: 'IN', name: 'India', flag: '🇮🇳' }
+            ];
+
+            useEffect(() => {
+                if (YOUTUBE_API_KEY && YOUTUBE_API_KEY !== 'YOUR_API_KEY_HERE') {
+                    setApiKeySet(true);
+                }
+
+                const saved = localStorage.getItem('ytSearchHistory');
+                if (saved) {
+                    try {
+                        setSearchHistory(JSON.parse(saved));
+                    } catch (e) {
+                        console.error('Failed to load history:', e);
+                    }
+                }
+                
+                const theme = localStorage.getItem('ytTheme');
+                if (theme === 'dark') setDarkMode(true);
+
+                const savedFilters = localStorage.getItem('ytFilters');
+                if (savedFilters) {
+                    try {
+                        setFilters(JSON.parse(savedFilters));
+                    } catch (e) {
+                        console.error('Failed to load filters:', e);
+                    }
+                }
+
+                const savedSettings = localStorage.getItem('ytSettings');
+                if (savedSettings) {
+                    try {
+                        setSettings(JSON.parse(savedSettings));
+                    } catch (e) {
+                        console.error('Failed to load settings:', e);
+                    }
+                }
+
+                const savedPlayerSize = localStorage.getItem('ytPlayerSize');
+                if (savedPlayerSize) {
+                    setPlayerSize(savedPlayerSize);
+                }
+            }, []);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('ytSearchHistory', JSON.stringify(searchHistory));
+                } catch (e) {
+                    console.error('Failed to save history:', e);
+                }
+            }, [searchHistory]);
+
+            useEffect(() => {
+                localStorage.setItem('ytTheme', darkMode ? 'dark' : 'light');
+                document.documentElement.classList.toggle('dark', darkMode);
+            }, [darkMode]);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('ytFilters', JSON.stringify(filters));
+                } catch (e) {
+                    console.error('Failed to save filters:', e);
+                }
+            }, [filters]);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem('ytSettings', JSON.stringify(settings));
+                } catch (e) {
+                    console.error('Failed to save settings:', e);
+                }
+            }, [settings]);
+
+            useEffect(() => {
+                localStorage.setItem('ytPlayerSize', playerSize);
+            }, [playerSize]);
+
+            const searchYouTube = async (query) => {
+                if (!query.trim()) {
+                    setErrorMessage('Please enter a search query');
+                    return;
+                }
+                
+                if (!apiKeySet) {
+                    setErrorMessage('Please add your YouTube API key to use this app. See instructions below.');
+                    return;
+                }
+
+                setLoading(true);
+                setVideos([]);
+                setErrorMessage('');
+                
+                try {
+                    let url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&regionCode=${filters.region}&maxResults=20&key=${YOUTUBE_API_KEY}`;
+                    
+                    if (filters.order && filters.order !== 'relevance') {
+                        url += `&order=${filters.order}`;
+                    }
+
+                    if (filters.uploadDate && filters.uploadDate !== 'any') {
+                        const now = new Date();
+                        let date = new Date();
+                        
+                        switch(filters.uploadDate) {
+                            case 'hour':
+                                date.setHours(now.getHours() - 1);
+                                break;
+                            case 'today':
+                                date.setDate(now.getDate() - 1);
+                                break;
+                            case 'week':
+                                date.setDate(now.getDate() - 7);
+                                break;
+                            case 'month':
+                                date.setMonth(now.getMonth() - 1);
+                                break;
+                            case 'year':
+                                date.setFullYear(now.getFullYear() - 1);
+                                break;
+                        }
+                        
+                        url += `&publishedAfter=${date.toISOString()}`;
+                    }
+
+                    if (filters.duration && filters.duration !== 'any') {
+                        url += `&videoDuration=${filters.duration}`;
+                    }
+
+                    const response = await fetch(url);
+                    
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        if (response.status === 403) {
+                            throw new Error('API key invalid or quota exceeded.');
+                        } else if (response.status === 400) {
+                            throw new Error('Invalid request. Please check your filters.');
+                        }
+                        throw new Error(`Search failed with status ${response.status}`);
+                    }
+
+                    const data = await response.json();
+
+                    if (!data.items || data.items.length === 0) {
+                        setErrorMessage('No videos found. Try different keywords or filters.');
+                        setVideos([]);
+                        return;
+                    }
+
+                    const videoIds = data.items
+                        .filter(item => item.id && item.id.videoId)
+                        .map(item => item.id.videoId)
+                        .join(',');
+                    
+                    if (!videoIds) {
+                        setErrorMessage('No valid video IDs found in search results.');
+                        return;
+                    }
+
+                    // Get video details including statistics
+                    const detailsUrl = `https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
+                    const detailsResponse = await fetch(detailsUrl);
+                    const detailsData = await detailsResponse.json();
+
+                    // Get channel details for subscriber counts
+                    const channelIds = [...new Set(data.items.map(item => item.snippet.channelId))].join(',');
+                    const channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${channelIds}&key=${YOUTUBE_API_KEY}`;
+                    const channelResponse = await fetch(channelUrl);
+                    const channelData = await channelResponse.json();
+
+                    const detailsMap = {};
+                    if (detailsData.items) {
+                        detailsData.items.forEach(item => {
+                            detailsMap[item.id] = item;
+                        });
+                    }
+
+                    const channelMap = {};
+                    if (channelData.items) {
+                        channelData.items.forEach(item => {
+                            channelMap[item.id] = item;
+                        });
+                    }
+
+                    const videosWithDetails = data.items
+                        .filter(item => item.id && item.id.videoId && item.snippet)
+                        .map(item => {
+                            const details = detailsMap[item.id.videoId];
+                            const channel = channelMap[item.snippet.channelId];
+                            const thumbnail = item.snippet.thumbnails?.medium?.url || 
+                                            item.snippet.thumbnails?.default?.url || '';
+                            
+                            return {
+                                id: item.id.videoId,
+                                videoId: item.id.videoId,
+                                title: item.snippet.title || 'Untitled',
+                                channelTitle: item.snippet.channelTitle || 'Unknown Channel',
+                                channelId: item.snippet.channelId,
+                                subscriberCount: channel?.statistics?.subscriberCount ? parseInt(channel.statistics.subscriberCount) : 0,
+                                thumbnail: thumbnail,
+                                duration: details?.contentDetails?.duration ? formatDuration(details.contentDetails.duration) : 'N/A',
+                                views: details?.statistics?.viewCount ? parseInt(details.statistics.viewCount) : 0,
+                                publishedAt: item.snippet.publishedAt || new Date().toISOString()
+                            };
+                        });
+
+                    setVideos(videosWithDetails);
+
+                    const timestamp = new Date().toISOString();
+                    const newHistory = [
+                        { query, timestamp, filters: {...filters} },
+                        ...searchHistory.filter(item => item.query !== query)
+                    ].slice(0, 50);
+                    setSearchHistory(newHistory);
+
+                } catch (error) {
+                    console.error('Search error:', error);
+                    setErrorMessage(error.message || 'Search failed. Check console for details.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const formatDuration = (duration) => {
+                try {
+                    const match = duration.match(/PT(\d+H)?(\d+M)?(\d+S)?/);
+                    if (!match) return 'N/A';
+                    
+                    const hours = (match[1] || '').replace('H', '');
+                    const minutes = (match[2] || '').replace('M', '');
+                    const seconds = (match[3] || '').replace('S', '');
+                    
+                    if (hours) {
+                        return `${hours}:${(minutes || '0').padStart(2, '0')}:${(seconds || '0').padStart(2, '0')}`;
+                    }
+                    return `${minutes || '0'}:${(seconds || '0').padStart(2, '0')}`;
+                } catch (e) {
+                    return 'N/A';
+                }
+            };
+
+            const formatSubscribers = (count) => {
+                if (!count || count === 0) return '';
+                if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+                if (count >= 1000) return `${(count / 1000).toFixed(1)}K`;
+                return count.toString();
+            };
+
+            const handleSearch = () => {
+                searchYouTube(searchQuery);
+            };
+
+            const clearHistory = () => {
+                if (confirm('Clear all search history?')) {
+                    setSearchHistory([]);
+                    localStorage.removeItem('ytSearchHistory');
+                }
+            };
+
+            const deleteHistoryItem = (index) => {
+                const newHistory = searchHistory.filter((_, i) => i !== index);
+                setSearchHistory(newHistory);
+            };
+
+            const formatViews = (views) => {
+                if (!views || views === 0) return '0 views';
+                if (views >= 1000000) return `${(views / 1000000).toFixed(1)}M views`;
+                if (views >= 1000) return `${(views / 1000).toFixed(1)}K views`;
+                return `${views} views`;
+            };
+
+            const formatDate = (dateString) => {
+                try {
+                    const date = new Date(dateString);
+                    const now = new Date();
+                    const diffTime = Math.abs(now - date);
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays === 0) return 'Today';
+                    if (diffDays === 1) return 'Yesterday';
+                    if (diffDays < 7) return `${diffDays} days ago`;
+                    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+                    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+                    return `${Math.floor(diffDays / 365)} years ago`;
+                } catch (e) {
+                    return 'Recently';
+                }
+            };
+
+            const getPlayerUrl = (videoId) => {
+                let params = [];
+                if (settings.autoplay) params.push('autoplay=1');
+                if (!settings.showPlayerTitle) params.push('showinfo=0');
+                if (!settings.showPlayerControls) params.push('controls=0');
+                params.push('modestbranding=1');
+                params.push('rel=0');
+                return `https://www.youtube.com/embed/${videoId}?${params.join('&')}`;
+            };
+
+            const bgColor = darkMode ? 'bg-gray-900' : 'bg-gray-50';
+            const cardBg = darkMode ? 'bg-gray-800' : 'bg-white';
+            const textColor = darkMode ? 'text-white' : 'text-gray-900';
+            const textSecondary = darkMode ? 'text-gray-400' : 'text-gray-600';
+            const borderColor = darkMode ? 'border-gray-700' : 'border-gray-200';
+
+            const getPlayerContainerClass = () => {
+                if (!selectedVideo) return '';
+                switch(playerSize) {
+                    case 'half':
+                        return 'max-w-3xl';
+                    case 'split':
+                        return 'w-1/2';
+                    default:
+                        return 'w-full max-w-7xl';
+                }
+            };
+
+            return (
+                <div className={`min-h-screen ${bgColor} ${textColor} transition-colors duration-200`}>
+                    {!apiKeySet && (
+                        <div className="api-setup-banner">
+                            ⚠️ API Key Required - See setup instructions below
+                        </div>
+                    )}
+
+                    <header className={`${cardBg} border-b ${borderColor} sticky top-0 z-10 shadow-sm`}>
+                        <div className="max-w-7xl mx-auto px-4 py-4">
+                            <div className="flex items-center justify-between mb-4">
+                                <h1 className="text-2xl font-bold">Minimal YouTube</h1>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setShowHistory(!showHistory)}
+                                        className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                        title="History"
+                                    >
+                                        📜
+                                    </button>
+                                    <button
+                                        onClick={() => setShowFilters(!showFilters)}
+                                        className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                        title="Filters"
+                                    >
+                                        🔧
+                                    </button>
+                                    <button
+                                        onClick={() => setShowSettings(!showSettings)}
+                                        className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                        title="Settings"
+                                    >
+                                        ⚙️
+                                    </button>
+                                    <button
+                                        onClick={() => setDarkMode(!darkMode)}
+                                        className={`p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                                    >
+                                        {darkMode ? '☀️' : '🌙'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-2 mb-4">
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                                    placeholder="Search YouTube..."
+                                    className={`flex-1 px-4 py-3 rounded-lg border ${borderColor} ${cardBg} ${textColor} focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                                />
+                                <button
+                                    onClick={handleSearch}
+                                    disabled={loading}
+                                    className={`px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                >
+                                    {loading ? '⏳' : '🔍'}
+                                </button>
+                            </div>
+
+                            <div className="flex items-center justify-between flex-wrap gap-3">
+                                <div className="flex items-center gap-3">
+                                    <span>🌍</span>
+                                    <div className="flex gap-2 flex-wrap">
+                                        {regions.map(region => (
+                                            <button
+                                                key={region.code}
+                                                onClick={() => setFilters({...filters, region: region.code})}
+                                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                                                    filters.region === region.code
+                                                        ? 'bg-blue-600 text-white'
+                                                        : `${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'}`
+                                                }`}
+                                                title={region.name}
+                                            >
+                                                {region.flag} {region.code}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={showResults}
+                                        onChange={(e) => setShowResults(e.target.checked)}
+                                        className="w-4 h-4"
+                                    />
+                                    <span className={`text-sm ${textSecondary}`}>Show results</span>
+                                </label>
+                            </div>
+
+                            {errorMessage && (
+                                <div className="mt-4 p-3 bg-red-100 dark:bg-red-900 dark:bg-opacity-30 border border-red-400 dark:border-red-700 rounded-lg text-red-800 dark:text-red-200 text-sm">
+                                    ⚠️ {errorMessage}
+                                </div>
+                            )}
+                        </div>
+                    </header>
+
+                    {showSettings && (
+                        <div className={`${cardBg} border-b ${borderColor} shadow-sm`}>
+                            <div className="max-w-7xl mx-auto px-4 py-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-lg font-semibold">⚙️ Settings</h2>
+                                    <button onClick={() => setShowSettings(false)}>❌</button>
+                                </div>
+                                
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="font-medium mb-3">Video Preview</h3>
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={settings.hoverPreview}
+                                                onChange={(e) => setSettings({...settings, hoverPreview: e.target.checked})}
+                                                className="w-4 h-4"
+                                            />
+                                            <span>Enable hover preview (experimental)</span>
+                                        </label>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="font-medium mb-3">Video Player</h3>
+                                        <div className="space-y-2">
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.showPlayerTitle}
+                                                    onChange={(e) => setSettings({...settings, showPlayerTitle: e.target.checked})}
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>Show video title on player</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.showPlayerControls}
+                                                    onChange={(e) => setSettings({...settings, showPlayerControls: e.target.checked})}
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>Show player controls</span>
+                                            </label>
+                                            <label className="flex items-center gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.autoplay}
+                                                    onChange={(e) => setSettings({...settings, autoplay: e.target.checked})}
+                                                    className="w-4 h-4"
+                                                />
+                                                <span>Autoplay videos</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h3 className="font-medium mb-3">Player Size Preset</h3>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setPlayerSize('full')}
+                                                className={`px-4 py-2 rounded-lg ${playerSize === 'full' ? 'bg-blue-600 text-white' : `${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}`}
+                                            >
+                                                Full Screen
+                                            </button>
+                                            <button
+                                                onClick={() => setPlayerSize('half')}
+                                                className={`px-4 py-2 rounded-lg ${playerSize === 'half' ? 'bg-blue-600 text-white' : `${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}`}
+                                            >
+                                                Half Screen
+                                            </button>
+                                            <button
+                                                onClick={() => setPlayerSize('split')}
+                                                className={`px-4 py-2 rounded-lg ${playerSize === 'split' ? 'bg-blue-600 text-white' : `${darkMode ? 'bg-gray-700' : 'bg-gray-200'}`}`}
+                                            >
+                                                Split View
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {showFilters && (
+                        <div className={`${cardBg} border-b ${borderColor} shadow-sm`}>
+                            <div className="max-w-7xl mx-auto px-4 py-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-lg font-semibold">Search Filters</h2>
+                                    <button onClick={() => setShowFilters(false)}>❌</button>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-2 ${textSecondary}`}>Duration</label>
+                                        <select
+                                            value={filters.duration}
+                                            onChange={(e) => setFilters({...filters, duration: e.target.value})}
+                                            className={`w-full px-3 py-2 rounded-lg border ${borderColor} ${cardBg} ${textColor}`}
+                                        >
+                                            <option value="any">Any duration</option>
+                                            <option value="short">Under 4 minutes</option>
+                                            <option value="medium">4-20 minutes</option>
+                                            <option value="long">Over 20 minutes</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-2 ${textSecondary}`}>Upload Date</label>
+                                        <select
+                                            value={filters.uploadDate}
+                                            onChange={(e) => setFilters({...filters, uploadDate: e.target.value})}
+                                            className={`w-full px-3 py-2 rounded-lg border ${borderColor} ${cardBg} ${textColor}`}
+                                        >
+                                            <option value="any">Any time</option>
+                                            <option value="hour">Last hour</option>
+                                            <option value="today">Today</option>
+                                            <option value="week">This week</option>
+                                            <option value="month">This month</option>
+                                            <option value="year">This year</option>
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-2 ${textSecondary}`}>Sort By</label>
+                                        <select
+                                            value={filters.order}
+                                            onChange={(e) => setFilters({...filters, order: e.target.value})}
+                                            className={`w-full px-3 py-2 rounded-lg border ${borderColor} ${cardBg} ${textColor}`}
+                                        >
+                                            <option value="relevance">Relevance</option>
+                                            <option value="date">Upload date</option>
+                                            <option value="rating">Rating</option>
+                                            <option value="viewCount">View count</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {selectedVideo && (
+                        <div className={`${playerSize === 'split' ? 'flex' : 'block'}`}>
+                            <div className={`${getPlayerContainerClass()} mx-auto p-4 video-player-wrapper relative`}>
+                                <div className={`${cardBg} rounded-lg overflow-hidden shadow-2xl`}>
+                                    <div className={`relative ${playerSize === 'full' ? 'aspect-video' : playerSize === 'half' ? 'aspect-video' : 'h-screen'}`}>
+                                        <iframe
+                                            width="100%"
+                                            height="100%"
+                                            src={getPlayerUrl(selectedVideo.videoId)}
+                                            title={selectedVideo.title}
+                                            frameBorder="0"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+                                            allowFullScreen
+                                        />
+                                        <div className="video-overlay">
+                                            <h3 className="font-semibold text-white mb-2">{selectedVideo.title}</h3>
+                                            <p className="text-gray-300 text-sm">
+                                                {selectedVideo.channelTitle} {selectedVideo.subscriberCount > 0 && `(${formatSubscribers(selectedVideo.subscriberCount)})`} • {formatViews(selectedVideo.views)} • {formatDate(selectedVideo.publishedAt)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 flex justify-between items-center">
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => window.open(`https://youtube.com/watch?v=${selectedVideo.videoId}`, '_blank')}
+                                                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                                            >
+                                                Open in YouTube
+                                            </button>
+                                        </div>
+                                        <button
+                                            onClick={() => setSelectedVideo(null)}
+                                            className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            {playerSize === 'split' && (
+                                <div className="w-1/2 overflow-y-auto p-4">
+                                    <h3 className="text-xl font-bold mb-4">Continue browsing</h3>
+                                    {videos.length > 0 && (
+                                        <div className="grid grid-cols-1 gap-4">
+                                            {videos.filter(v => v.id !== selectedVideo.id).map((video) => (
+                                                <div 
+                                                    key={video.id} 
+                                                    onClick={() => setSelectedVideo(video)} 
+                                                    className={`${cardBg} rounded-lg border ${borderColor} cursor-pointer hover:shadow-lg transition-shadow overflow-hidden flex gap-3`}
+                                                >
+                                                    <div className="relative w-40 flex-shrink-0">
+                                                        <img src={video.thumbnail} alt={video.title} className="w-full h-24 object-cover" />
+                                                        <div className="absolute bottom-1 right-1 bg-black bg-opacity-80 text-white text-xs px-1 py-0.5 rounded">
+                                                            {video.duration}
+                                                        </div>
+                                                    </div>
+                                                    <div className="py-2 pr-2 flex-1 min-w-0">
+                                                        <h3 className="font-semibold line-clamp-2 text-sm mb-1">{video.title}</h3>
+                                                        <p className={`text-xs ${textSecondary}`}>
+                                                            {video.channelTitle} {video.subscriberCount > 0 && `(${formatSubscribers(video.subscriberCount)})`}
+                                                        </p>
+                                                        <p className={`text-xs ${textSecondary}`}>
+                                                            {formatViews(video.views)} • {formatDate(video.publishedAt)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <main className={`max-w-7xl mx-auto px-4 py-6 ${selectedVideo ? 'hidden' : 'block'}`}>
+                        {!apiKeySet && (
+                            <div className={`${cardBg} rounded-lg border ${borderColor} p-6 mb-6`}>
+                                <h2 className="text-xl font-bold mb-4">📝 Setup Instructions</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="font-semibold mb-2">Step 1: Get YouTube API Key (FREE)</h3>
+                                        <ol className="list-decimal list-inside space-y-2 text-sm">
+                                            <li>Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" className="text-blue-500 underline">Google Cloud Console</a></li>
+                                            <li>Create a new project</li>
+                                            <li>Enable "YouTube Data API v3"</li>
+                                            <li>Create Credentials → API Key</li>
+                                            <li>Copy your API key</li>
+                                        </ol>
+                                    </div>
+                                    <div>
+                                        <h3 className="font-semibold mb-2">Step 2: Add API Key</h3>
+                                        <p className="text-sm">Edit this HTML file and replace <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">YOUR_API_KEY_HERE</code> with your key</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {showHistory && searchHistory.length > 0 && (
+                            <div className={`${cardBg} rounded-lg border ${borderColor} p-6 mb-6`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-xl font-semibold">📜 Search History</h2>
+                                    <button onClick={clearHistory} className="text-sm text-red-500 hover:text-red-600">Clear All</button>
+                                </div>
+                                <div className="space-y-2">
+                                    {searchHistory.map((item, idx) => (
+                                        <div key={idx} className={`flex justify-between items-center p-3 rounded border ${borderColor} hover:bg-gray-700 hover:bg-opacity-20`}>
+                                            <button 
+                                                onClick={() => { 
+                                                    setSearchQuery(item.query); 
+                                                    setFilters(item.filters || filters); 
+                                                    searchYouTube(item.query); 
+                                                }} 
+                                                className="flex-1 text-left"
+                                            >
+                                                <div className="font-medium">{item.query}</div>
+                                                <div className={`text-xs ${textSecondary} mt-1`}>
+                                                    {new Date(item.timestamp).toLocaleString()} • {regions.find(r => r.code === (item.filters?.region || 'US'))?.flag}
+                                                </div>
+                                            </button>
+                                            <button onClick={() => deleteHistoryItem(idx)} className="ml-2 p-1 hover:bg-gray-600 rounded">❌</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {showResults && (
+                            <div>
+                                {loading && (
+                                    <div className="flex justify-center py-12">
+                                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                                    </div>
+                                )}
+
+                                {!loading && videos.length > 0 && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                        {videos.map((video) => (
+                                            <div 
+                                                key={video.id} 
+                                                className={`${cardBg} rounded-lg border ${borderColor} cursor-pointer hover:shadow-lg transition-shadow overflow-hidden`}
+                                            >
+                                                <div 
+                                                    className="video-preview-container relative"
+                                                    onClick={() => setSelectedVideo(video)}
+                                                >
+                                                    <img src={video.thumbnail} alt={video.title} className="w-full aspect-video object-cover" />
+                                                    {settings.hoverPreview && (
+                                                        <div className="hover-preview">
+                                                            <iframe
+                                                                width="100%"
+                                                                height="100%"
+                                                                src={`https://www.youtube.com/embed/${video.videoId}?controls=0&mute=1`}
+                                                                title={video.title}
+                                                                frameBorder="0"
+                                                                allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                    <div className="absolute bottom-2 right-2 bg-black bg-opacity-80 text-white text-xs px-2 py-1 rounded">
+                                                        {video.duration}
+                                                    </div>
+                                                </div>
+                                                <div className="p-3" onClick={() => setSelectedVideo(video)}>
+                                                    <h3 className="font-semibold line-clamp-2 mb-2">{video.title}</h3>
+                                                    <p className={`text-sm ${textSecondary}`}>
+                                                        {video.channelTitle} {video.subscriberCount > 0 && `(${formatSubscribers(video.subscriberCount)})`}
+                                                    </p>
+                                                    <p className={`text-xs ${textSecondary} mt-1`}>
+                                                        {formatViews(video.views)} • {formatDate(video.publishedAt)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {!loading && videos.length === 0 && searchQuery && apiKeySet && !errorMessage && (
+                                    <div className={`${cardBg} rounded-lg border ${borderColor} p-12 text-center`}>
+                                        <p className={textSecondary}>No videos found</p>
+                                    </div>
+                                )}
+
+                                {!loading && !searchQuery && apiKeySet && (
+                                    <div className={`${cardBg} rounded-lg border ${borderColor} p-12 text-center`}>
+                                        <p className={`text-lg ${textSecondary}`}>🔍 Search to get started</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
